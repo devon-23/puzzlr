@@ -290,4 +290,14 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// In dev, Vite serves the frontend and proxies /api here. In production
+// there's no separate frontend server, so this process serves the built
+// bundle too — one process, one port. No client-side router, so any
+// unmatched GET just falls back to index.html.
+const STATIC_DIR = resolve('dist');
+if (existsSync(STATIC_DIR)) {
+  app.use(express.static(STATIC_DIR));
+  app.use((_req, res) => res.sendFile(resolve(STATIC_DIR, 'index.html')));
+}
+
 app.listen(PORT, () => console.log(`puzzlr api on :${PORT}`));
