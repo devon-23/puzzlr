@@ -1,0 +1,159 @@
+/*
+ * Contexto register: white ground, one narrow column, and a horizontal bar per
+ * guess whose fill and colour both encode the same thing.
+ *
+ * Here that thing is how common the word was — green for a word thousands of
+ * songs carry, red for one only a handful do. Encoding it twice (length AND
+ * hue) is deliberate: it survives colour-blindness and reads at a glance.
+ *
+ * Two tokens per band. `--band-*` is the bar fill; `--band-*-ink` is the
+ * darkened form for text, since the bar colours are far too light to read on
+ * white. Never set text colour from the fill token.
+ */
+:root {
+  --bg: #ffffff;
+  --fg: #1c1c1e;
+  --fg-soft: #55565a;
+  --fg-mute: #8a8b90;
+  --line: #dcdde0;
+  --line-soft: #eeeff1;
+  --fill: #f5f6f7;
+
+  --band-common: #4f9d54;
+  --band-uncommon: #c9a227;
+  --band-rare: #d97b32;
+  --band-ultra: #cc4b3c;
+
+  --band-common-ink: #3d7a41;
+  --band-uncommon-ink: #96751a;
+  --band-rare-ink: #a95b1f;
+  --band-ultra-ink: #b03728;
+
+  --band-common-bg: #e8f3e9;
+  --band-uncommon-bg: #f8f1d9;
+  --band-rare-bg: #fbeade;
+  --band-ultra-bg: #fbe4e1;
+
+  --key: #4f9d54;
+  --key-ink: #ffffff;
+  --warn: #cc4b3c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #1b1b1d;
+    --fg: #e6e6e8;
+    --fg-soft: #a9aaae;
+    --fg-mute: #85868b;
+    --line: #35363a;
+    --line-soft: #26272a;
+    --fill: #232427;
+
+    --band-common: #4f9d54;
+    --band-uncommon: #b8931f;
+    --band-rare: #c46f2a;
+    --band-ultra: #c04536;
+
+    --band-common-ink: #7fc383;
+    --band-uncommon-ink: #dcc158;
+    --band-rare-ink: #e29457;
+    --band-ultra-ink: #e57567;
+
+    --band-common-bg: #1d2a1e;
+    --band-uncommon-bg: #2a2617;
+    --band-rare-bg: #2b1f15;
+    --band-ultra-bg: #2c1a17;
+
+    --key: #4f9d54;
+    --key-ink: #ffffff;
+    --warn: #e57567;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #1b1b1d;
+  --fg: #e6e6e8;
+  --fg-soft: #a9aaae;
+  --fg-mute: #85868b;
+  --line: #35363a;
+  --line-soft: #26272a;
+  --fill: #232427;
+
+  --band-common: #4f9d54;
+  --band-uncommon: #b8931f;
+  --band-rare: #c46f2a;
+  --band-ultra: #c04536;
+
+  --band-common-ink: #7fc383;
+  --band-uncommon-ink: #dcc158;
+  --band-rare-ink: #e29457;
+  --band-ultra-ink: #e57567;
+
+  --band-common-bg: #1d2a1e;
+  --band-uncommon-bg: #2a2617;
+  --band-rare-bg: #2b1f15;
+  --band-ultra-bg: #2c1a17;
+
+  --key: #4f9d54;
+  --key-ink: #ffffff;
+  --warn: #e57567;
+}
+
+/* One class per band, so a row only has to say which band it is. */
+.b-common   { --band: var(--band-common);   --ink: var(--band-common-ink);   --band-bg: var(--band-common-bg); }
+.b-uncommon { --band: var(--band-uncommon); --ink: var(--band-uncommon-ink); --band-bg: var(--band-uncommon-bg); }
+.b-rare     { --band: var(--band-rare);     --ink: var(--band-rare-ink);     --band-bg: var(--band-rare-bg); }
+.b-ultra    { --band: var(--band-ultra);    --ink: var(--band-ultra-ink);    --band-bg: var(--band-ultra-bg); }
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-weight: 600;
+}
+button:not(.primary):hover:not(:disabled) { background: var(--fill); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+button.primary {
+  background: var(--key);
+  border-color: var(--key);
+  color: var(--key-ink);
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+
+input {
+  font: inherit;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+input::placeholder { color: var(--fg-mute); }
+input:focus { outline: none; border-color: var(--fg-mute); }
+
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  button, input { transition: background 0.12s ease, border-color 0.12s ease; }
+}
