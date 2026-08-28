@@ -1,0 +1,28 @@
+{
+  "name": "puzzlr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Daily lyric-chain game",
+  "scripts": {
+    "build": "vite build",
+    "build:catalog": "npm run links && npm run finalize",
+    "dev": "vite",
+    "finalize": "node pipeline/05-finalize.js",
+    "hydrate": "node pipeline/02-hydrate.js",
+    "links": "node pipeline/03-links.js",
+    "seed": "node pipeline/01-seed.js",
+    "server": "node server/index.js",
+    "smoke": "node scripts/smoke.js",
+    "test": "node --test pipeline/lib/*.test.js server/lib/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^5.2.1",
+    "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.2"
+  }
+}
