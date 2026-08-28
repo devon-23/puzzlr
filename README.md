@@ -30,6 +30,11 @@ The rules, in short:
 - 3 undos per run if a word has you stuck.
 - Search by title/artist freely, or by lyric with 3+ words — song openings aren't searchable, so search never just hands you the answer.
 
+When a run ends you can put a name to it for that day's leaderboard, and reach
+back into the archive to play any past date — one attempt each. Archive runs are
+kept off the daily boards: unlimited time and hindsight isn't the same contest as
+playing it live.
+
 ## Under the hood
 
 Lyric Chain is a small full-stack app split into three independently runnable pieces:
