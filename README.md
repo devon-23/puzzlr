@@ -1,5 +1,7 @@
 # Lyric Chain
 
+**Play it: [puzzlr.duckdns.org](https://puzzlr.duckdns.org)**
+
 **One word. One song. One line's worth of momentum, and then you're on to the next.**
 
 Lyric Chain is a daily word-association game built on real song lyrics. You're handed a word. You name any song — a real one, from a catalog of 80,000+ tracks — that contains that word anywhere in its title or lyrics. Whatever word *that song's line ends on* becomes the next word you have to answer. Chain as many songs together as you can before you rack up three wrong guesses.
