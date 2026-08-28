@@ -36,8 +36,13 @@ jobs:
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Pull, build, restart
+        # A dependency change makes the remote npm ci run for minutes with no
+        # output; without keepalives the idle channel gets dropped and the
+        # deploy fails even though the VM is fine.
         run: |
           ssh -i ~/.ssh/id_ed25519 \
             -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=40 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             'bash ~/deploy.sh'
