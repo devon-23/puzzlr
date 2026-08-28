@@ -2,8 +2,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { api, splitSnippet, tierOf } from './api.js';
 import GuessBar from './GuessBar.vue';
+import ArchivePicker from './ArchivePicker.vue';
 
 const props = defineProps({ result: { type: Object, required: true } });
+defineEmits(['play']);
 
 const board = ref(null);
 const copied = ref(null);
@@ -96,7 +98,10 @@ async function copy(text, which) {
 
 <template>
   <div class="done">
-    <p class="label">Chain #{{ result.puzzle }}</p>
+    <p class="label">
+      Chain #{{ result.puzzle }}
+      <span v-if="result.archive" class="tag">archive · {{ result.puzzleDate }}</span>
+    </p>
     <p class="big">{{ result.links }}</p>
     <p class="unit">link{{ result.links === 1 ? '' : 's' }}</p>
 
@@ -106,7 +111,8 @@ async function copy(text, which) {
         <span>strikes</span>
       </div>
       <div><b>{{ minutes }}</b><span>minutes</span></div>
-      <div v-if="result.playersFinished >= 5">
+      <!-- An archive run has no rank: it isn't racing that day's players. -->
+      <div v-if="result.rank && result.playersFinished >= 5">
         <b>{{ result.rank }}</b>
         <span>of {{ result.playersFinished }} today</span>
       </div>
@@ -181,6 +187,8 @@ async function copy(text, which) {
       </ol>
     </section>
 
+    <ArchivePicker @play="$emit('play', $event)" />
+
     <p class="tomorrow">New chain tomorrow.</p>
   </div>
 </template>
@@ -188,6 +196,10 @@ async function copy(text, which) {
 <style scoped>
 .done { text-align: center; padding-top: 12px; }
 .label { margin: 0; font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--fg-mute); }
+.tag {
+  margin-left: 6px; padding: 2px 7px; border-radius: 999px;
+  background: var(--fill); color: var(--fg-soft); letter-spacing: 0.06em;
+}
 .big { margin: 6px 0 0; font-size: 4rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .unit { margin: 0 0 22px; font-size: 13px; color: var(--fg-mute); }
 
