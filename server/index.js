@@ -17,7 +17,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { Game, Verdict, MIN_LYRIC_TOKENS } from './lib/game.js';
-import { openPlayersDb, resolvePuzzle } from './lib/players.js';
+import { openPlayersDb, resolvePuzzle, puzzleNumberFor, todayPuzzle, dateForPuzzle } from './lib/players.js';
 import { buildShare, rarityOf } from './lib/share.js';
 
 const CATALOG = resolve('data/catalog.db');
@@ -44,8 +44,8 @@ const startFor = catalog.prepare('SELECT song_id FROM daily_pool WHERE seq=?');
 const S = {
   byId: players.prepare('SELECT * FROM sessions WHERE id=?'),
   byDevice: players.prepare('SELECT * FROM sessions WHERE device_id=? AND puzzle=?'),
-  create: players.prepare(`INSERT INTO sessions (id,device_id,display_name,puzzle,started_at,current_song,current_word)
-                           VALUES (?,?,?,?,?,?,?)`),
+  create: players.prepare(`INSERT INTO sessions (id,device_id,display_name,puzzle,started_at,current_song,current_word,archive)
+                           VALUES (?,?,?,?,?,?,?,?)`),
   setCurrent: players.prepare('UPDATE sessions SET current_song=?, current_word=? WHERE id=?'),
   finish: players.prepare("UPDATE sessions SET state='finished', finished_at=? WHERE id=?"),
   bump: players.prepare('UPDATE sessions SET links=?, rarity_score=? WHERE id=?'),
@@ -58,9 +58,10 @@ const S = {
   countPlay: players.prepare(`INSERT INTO song_daily_counts (puzzle,song_id,plays) VALUES (?,?,1)
                               ON CONFLICT(puzzle,song_id) DO UPDATE SET plays=plays+1`),
   playsFor: players.prepare('SELECT plays FROM song_daily_counts WHERE puzzle=? AND song_id=?'),
-  playersOn: players.prepare("SELECT COUNT(*) c FROM sessions WHERE puzzle=? AND state='finished'"),
+  // The daily boards count only same-day runs — see the `archive` column.
+  playersOn: players.prepare("SELECT COUNT(*) c FROM sessions WHERE puzzle=? AND state='finished' AND archive=0"),
   board: players.prepare(`SELECT display_name, links, strikes, finished_at FROM sessions
-                          WHERE puzzle=? AND state='finished'
+                          WHERE puzzle=? AND state='finished' AND archive=0
                           ORDER BY links DESC, strikes ASC, finished_at ASC LIMIT ?`),
 };
 
@@ -88,6 +89,8 @@ function stateOf(sess) {
   return {
     sessionId: sess.id,
     puzzle: sess.puzzle,
+    puzzleDate: dateForPuzzle(sess.puzzle),
+    archive: !!sess.archive,
     state: sess.state,
     chain: chainView(sess.id),
     links: sess.links,
@@ -111,10 +114,26 @@ function rateLimited(key) {
 // ── routes ───────────────────────────────────────────────────────────────────
 
 app.post('/api/session', (req, res) => {
-  const { deviceId, localDate, displayName } = req.body ?? {};
+  const { deviceId, localDate, displayName, archiveDate } = req.body ?? {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
 
-  const puzzle = resolvePuzzle(localDate);
+  const today = resolvePuzzle(localDate);
+
+  // With no archiveDate this is the ordinary daily run. With one, the player is
+  // deliberately reaching back, which is allowed for any past puzzle but never
+  // for today's or a future one — that would just be a second attempt.
+  let puzzle = today;
+  let archive = 0;
+  if (archiveDate != null) {
+    const n = puzzleNumberFor(archiveDate);
+    if (n === null) return res.status(400).json({ error: 'archiveDate must be YYYY-MM-DD' });
+    if (n < 1 || n >= today) return res.status(400).json({ error: 'the archive holds past puzzles only' });
+    puzzle = n;
+    archive = 1;
+  }
+
+  // One run per puzzle per device, archive included: replaying a past puzzle
+  // until it goes well would make the score meaningless.
   const existing = S.byDevice.get(deviceId, puzzle);
   if (existing) return res.json(stateOf(existing));
 
@@ -125,11 +144,30 @@ app.post('/api/session', (req, res) => {
 
   const id = randomUUID();
   players.transaction(() => {
-    S.create.run(id, deviceId, displayName ?? null, puzzle, Date.now(), startSong, opening.word);
+    S.create.run(id, deviceId, displayName ?? null, puzzle, Date.now(), startSong, opening.word, archive);
     S.addStep.run(id, 0, startSong, null, null, opening.word, null);
   })();
 
   res.json(stateOf(S.byId.get(id)));
+});
+
+/**
+ * What the archive covers: every puzzle from #1 up to yesterday, plus which of
+ * them this device has already played, so the picker can show them as done.
+ */
+app.get('/api/archive', (req, res) => {
+  const device = String(req.query.deviceId ?? '');
+  const today = todayPuzzle();
+  const played = device
+    ? players.prepare("SELECT puzzle, links, state FROM sessions WHERE device_id=? AND puzzle < ?")
+        .all(device, today)
+        .map((r) => ({ puzzle: r.puzzle, date: dateForPuzzle(r.puzzle), links: r.links, finished: r.state === 'finished' }))
+    : [];
+  res.json({
+    first: { puzzle: 1, date: dateForPuzzle(1) },
+    last: { puzzle: today - 1, date: dateForPuzzle(today - 1) },
+    played,
+  });
 });
 
 app.post('/api/search', (req, res) => {
@@ -174,7 +212,9 @@ app.post('/api/chain', (req, res) => {
     S.addStep.run(sess.id, used.length, result.song.id, sess.current_word,
                   result.snippet ?? null, result.nextWord, answers);
     S.bump.run(links, rarity, sess.id);
-    S.countPlay.run(sess.puzzle, result.song.id);
+    // "How many others chained this" describes that day's players, so a much
+    // later archive run must not add itself to the tally.
+    if (!sess.archive) S.countPlay.run(sess.puzzle, result.song.id);
     S.setCurrent.run(result.song.id, result.nextWord, sess.id);
   })();
 
@@ -241,13 +281,17 @@ function resultOf(sess) {
     };
   });
 
-  const rank = players
-    .prepare(`SELECT COUNT(*)+1 r FROM sessions WHERE puzzle=? AND state='finished'
+  // Ranked against that day's players only; an archive run is scored for the
+  // player's own sake but never placed among them.
+  const rank = sess.archive ? null : players
+    .prepare(`SELECT COUNT(*)+1 r FROM sessions WHERE puzzle=? AND state='finished' AND archive=0
               AND (links > ? OR (links = ? AND strikes < ?))`)
     .get(sess.puzzle, sess.links, sess.links, sess.strikes).r;
 
   return {
     puzzle: sess.puzzle,
+    puzzleDate: dateForPuzzle(sess.puzzle),
+    archive: !!sess.archive,
     links: sess.links,
     strikes: sess.strikes,
     undos: sess.undos,

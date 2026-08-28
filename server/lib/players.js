@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   rarity_score  REAL NOT NULL DEFAULT 0,
   current_song  INTEGER,
   current_word  TEXT,
+  -- A run at a past puzzle, started from the archive. Kept off the daily
+  -- leaderboards: an archive player has unlimited time and hindsight, so
+  -- ranking them against people who played that day is not the same contest.
+  archive       INTEGER NOT NULL DEFAULT 0,
   UNIQUE(device_id, puzzle)
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_board
@@ -62,6 +66,13 @@ export function openPlayersDb(path = PLAYERS_DB) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.exec(SCHEMA);
+
+  // `archive` arrived after the first sessions were already written, so a live
+  // database predates the column. CREATE TABLE IF NOT EXISTS won't add it.
+  const cols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  if (!cols.includes('archive')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN archive INTEGER NOT NULL DEFAULT 0');
+  }
   return db;
 }
 
@@ -85,13 +96,24 @@ export function puzzleNumberFor(dateStr) {
   return Math.floor((ts - PUZZLE_EPOCH) / 86400000);
 }
 
+/** The puzzle number for right now, by UTC. */
+export const todayPuzzle = () => Math.floor((Date.now() - PUZZLE_EPOCH) / 86400000);
+
+/** The calendar date a puzzle number belongs to — the inverse of puzzleNumberFor. */
+export function dateForPuzzle(n) {
+  const d = new Date(PUZZLE_EPOCH + n * 86400000);
+  const p = (x) => String(x).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
 /**
  * The client reports its own local date, which is the only way to give every
- * timezone a midnight reset. Clamp it to ±1 day of UTC so nobody can farm the
- * archive by lying about the date.
+ * timezone a midnight reset. Clamp it to ±1 day of UTC so nobody can reach a
+ * past puzzle by lying about the date — the archive is the sanctioned way in,
+ * and it marks the session so the daily boards stay honest.
  */
 export function resolvePuzzle(clientDate) {
-  const today = Math.floor((Date.now() - PUZZLE_EPOCH) / 86400000);
+  const today = todayPuzzle();
   const claimed = puzzleNumberFor(clientDate);
   // Never below #1: the epoch is launch-day-minus-one, so 0 means "before launch".
   if (claimed === null) return Math.max(1, today);

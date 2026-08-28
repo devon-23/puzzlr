@@ -131,6 +131,19 @@ async function undo() {
   }
 }
 
+/**
+ * Switch to a past puzzle chosen from the archive. If that run was already
+ * finished, go straight to its result rather than a board the player can't move.
+ */
+async function startArchive(s) {
+  session.value = s;
+  result.value = s.state === 'finished' ? await api.giveUp(s.sessionId) : null;
+  query.value = '';
+  results.value = [];
+  notice.value = null;
+  window.scrollTo({ top: 0 });
+}
+
 async function giveUp() {
   if (!confirm(`End today's run at ${links.value} link${links.value === 1 ? '' : 's'}? You can't restart until tomorrow.`)) return;
   result.value = await api.giveUp(session.value.sessionId);
@@ -151,9 +164,14 @@ async function giveUp() {
     <p v-if="loading" class="status">Loading today’s chain…</p>
     <p v-else-if="error" class="status warn">{{ error }}</p>
 
-    <ResultScreen v-else-if="result" :result="result" />
+    <ResultScreen v-else-if="result" :result="result" @play="startArchive" />
 
     <template v-else>
+      <!-- Playing back in time is easy to forget you did; say so plainly. -->
+      <p v-if="session?.archive" class="archive-note">
+        Archive chain #{{ session.puzzle }} — {{ session.puzzleDate }}
+      </p>
+
       <!-- The prompt and the search box keep a fixed position; everything the
            player builds grows downward beneath them. -->
       <section class="ask" :class="[`b-${tier.key}`, { shake }]" v-if="word">
@@ -242,6 +260,12 @@ h1 { margin: 0; text-align: center; font-size: 1.35rem; font-weight: 700; letter
 main { max-width: 480px; margin: 0 auto; padding: 16px 16px 90px; }
 .status { text-align: center; color: var(--fg-mute); padding: 64px 0; }
 .status.warn { color: var(--warn); }
+
+.archive-note {
+  margin: 0 0 10px; padding: 7px 12px; border-radius: 6px;
+  background: var(--fill); color: var(--fg-soft);
+  font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; text-align: center;
+}
 
 /* ── the prompt ── */
 .ask {
