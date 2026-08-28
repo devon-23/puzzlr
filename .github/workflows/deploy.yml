@@ -31,9 +31,30 @@ jobs:
       - name: Open an SSH session to the VM
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          # printf, not echo: the key must end in exactly one newline, and a
+          # secret pasted without a trailing one will not parse.
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" | sed -e 's/[[:space:]]*$//' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Derive the public half. Printing it is safe and is the only way to
+          # tell "secret is malformed" from "key is not on the server".
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 > /tmp/derived.pub 2>/tmp/keyerr; then
+            echo "::error::DEPLOY_SSH_KEY did not parse as a private key."
+            cat /tmp/keyerr
+            exit 1
+          fi
+          echo "Deploy key public half (must match the VM's authorized_keys):"
+          cat /tmp/derived.pub
+
+          ssh-keyscan -t rsa,ecdsa,ed25519 "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "known_hosts entries: $(wc -l < ~/.ssh/known_hosts)"
+
+      - name: Verify the key is accepted
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'echo "authenticated as $(whoami) on $(hostname)"'
 
       - name: Pull, build, restart
         # A dependency change makes the remote npm ci run for minutes with no
@@ -41,6 +62,7 @@ jobs:
         # deploy fails even though the VM is fine.
         run: |
           ssh -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=40 \
