@@ -123,4 +123,5 @@ export const api = {
   undo: (sessionId) => post('/api/undo', { sessionId }),
   giveUp: (sessionId) => post('/api/giveup', { sessionId }),
   leaderboard: (puzzle) => fetch(`/api/leaderboard?puzzle=${puzzle}`).then((r) => r.json()),
+  setName: (sessionId, name) => post('/api/name', { sessionId, name }),
 };

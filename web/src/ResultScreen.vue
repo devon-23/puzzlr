@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { api, splitSnippet, tierOf } from './api.js';
+import { api, splitSnippet, tierOf, displayName, setDisplayName } from './api.js';
 import GuessBar from './GuessBar.vue';
 import ArchivePicker from './ArchivePicker.vue';
 
@@ -84,6 +84,35 @@ onMounted(async () => {
     board.value = await api.leaderboard(props.result.puzzle);
   } catch { /* the board is a bonus, not the result */ }
 });
+
+/**
+ * Naming yourself for the board.
+ *
+ * A run is created long before the player cares what they're called, so the
+ * name is claimed here — usually on seeing a rank worth putting a name to.
+ */
+const savedName = ref(props.result.displayName ?? displayName());
+const nameInput = ref(savedName.value ?? '');
+const savingName = ref(false);
+const nameError = ref(null);
+
+async function saveName() {
+  const v = nameInput.value.trim();
+  if (!v || savingName.value) return;
+  savingName.value = true;
+  nameError.value = null;
+  try {
+    const { name } = await api.setName(props.result.sessionId, v);
+    setDisplayName(name);
+    savedName.value = name;
+    nameInput.value = name;
+    board.value = await api.leaderboard(props.result.puzzle); // show yourself on it
+  } catch (e) {
+    nameError.value = e.message;
+  } finally {
+    savingName.value = false;
+  }
+}
 
 async function copy(text, which) {
   try {
@@ -178,8 +207,34 @@ async function copy(text, which) {
 
     <section v-if="board?.entries?.length" class="board">
       <h2>Today’s longest chains</h2>
+
+      <!-- An archive run isn't on today's board, so there's nothing to claim. -->
+      <div v-if="!result.archive" class="claim">
+        <p class="note">
+          <template v-if="savedName">
+            You’re on the board as <b>{{ savedName }}</b>.
+          </template>
+          <template v-else>
+            You’re listed as <b>anonymous</b> — add a name to claim your place.
+          </template>
+        </p>
+        <div class="row">
+          <input
+            v-model="nameInput"
+            maxlength="20"
+            placeholder="Your name"
+            aria-label="Your name on the leaderboard"
+            @keyup.enter="saveName"
+          />
+          <button @click="saveName" :disabled="!nameInput.trim() || savingName">
+            {{ savingName ? 'Saving…' : savedName ? 'Update' : 'Save' }}
+          </button>
+        </div>
+        <p v-if="nameError" class="note warn">{{ nameError }}</p>
+      </div>
+
       <ol>
-        <li v-for="e in board.entries.slice(0, 10)" :key="e.rank">
+        <li v-for="e in board.entries.slice(0, 10)" :key="e.rank" :class="{ me: e.rank === result.rank }">
           <span class="r">{{ e.rank }}</span>
           <span class="who">{{ e.name }}</span>
           <span class="l">{{ e.links }}</span>
@@ -255,6 +310,16 @@ h2 {
 }
 .r { color: var(--fg-mute); font-variant-numeric: tabular-nums; }
 .l { font-weight: 700; font-variant-numeric: tabular-nums; }
+.board li.me { font-weight: 700; }
+.board li.me .r, .board li.me .who { color: var(--key); }
+
+.claim { margin-bottom: 14px; }
+.claim .note { margin: 0 0 8px; font-size: 13px; color: var(--fg-mute); }
+.claim .note b { color: var(--fg-soft); }
+.claim .note.warn { margin: 8px 0 0; color: var(--warn); }
+.claim .row { display: flex; gap: 8px; }
+.claim .row input { flex: 1; min-width: 0; padding: 10px 12px; }
+.claim .row button { flex: 0 0 auto; }
 
 .tomorrow { margin-top: 32px; font-size: 12px; color: var(--fg-mute); }
 </style>

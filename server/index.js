@@ -289,6 +289,8 @@ function resultOf(sess) {
     .get(sess.puzzle, sess.links, sess.links, sess.strikes).r;
 
   return {
+    sessionId: sess.id,
+    displayName: sess.display_name,
     puzzle: sess.puzzle,
     puzzleDate: dateForPuzzle(sess.puzzle),
     archive: !!sess.archive,
@@ -309,6 +311,31 @@ function resultOf(sess) {
     })(),
   };
 }
+
+/** Longest name that still fits a leaderboard row on a phone. */
+const MAX_NAME = 20;
+
+/**
+ * Claim a name for the board.
+ *
+ * A run is created before the player has any reason to care what they're
+ * called, so the name arrives afterwards — usually on seeing themselves ranked.
+ * It is applied to every run this device owns, so the boards agree with each
+ * other rather than showing one player under two names.
+ */
+app.post('/api/name', (req, res) => {
+  const { sessionId, name } = req.body ?? {};
+  const sess = S.byId.get(sessionId ?? '');
+  if (!sess) return res.status(404).json({ error: 'no such session' });
+
+  // Strip control and formatting characters: they render as nothing but can
+  // reorder or blank out a whole board row.
+  const clean = String(name ?? '').replace(/\p{C}/gu, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+  if (!clean) return res.status(400).json({ error: 'name required' });
+
+  players.prepare('UPDATE sessions SET display_name=? WHERE device_id=?').run(clean, sess.device_id);
+  res.json({ name: clean });
+});
 
 app.get('/api/leaderboard', (req, res) => {
   const puzzle = Number(req.query.puzzle);
