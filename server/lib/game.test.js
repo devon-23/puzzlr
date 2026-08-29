@@ -33,6 +33,7 @@ function makeCatalog() {
     { id: 3, title: 'Third Alone', artist: 'Gutter Choir', rank: 700 },
     { id: 4, title: 'Ladder', artist: 'Roof Party', rank: 600 }, // does not contain "alone"
     { id: 5, title: 'Fourth Alone', artist: 'Kettle Choir', rank: 500 },
+    { id: 6, title: 'Funs Anthem', artist: 'Roof Party', rank: 400 }, // has "funs", never "fun"
   ];
   const ins = db.prepare('INSERT INTO songs (id,title,artist,rank) VALUES (?,?,?,?)');
   const fts = db.prepare('INSERT INTO song_fts (rowid,title,artist) VALUES (?,?,?)');
@@ -56,6 +57,7 @@ function makeCatalog() {
   for (const id of [1, 2, 4]) link(id, 'world', 'night');
   for (const id of [1, 3, 5]) link(id, 'rain', 'night');
   for (const id of [2, 3, 4]) link(id, 'night', 'silver');
+  link(6, 'funs', 'night'); // near-miss fixture: plural only, singular never appears
 
   db.exec(`INSERT INTO words (word, song_count)
            SELECT word, COUNT(DISTINCT song_id) FROM occurrences GROUP BY word`);
@@ -89,6 +91,18 @@ test('a song already in the chain is refused — no looping', () => {
 test('another song by the same artist is allowed', () => {
   // Song 5 shares an artist with song 1 and must still chain.
   assert.equal(game.validate('alone', 5, [1]).verdict, Verdict.CHAINED);
+});
+
+test('a plural-only near miss is named, not silently allowed', () => {
+  // Song 6 has "funs" but never the exact prompt word "fun" — still a strike,
+  // but the rejection says why rather than leaving it a mystery.
+  const r = game.validate('fun', 6, []);
+  assert.equal(r.verdict, Verdict.NO_LINE);
+  assert.equal(r.nearMiss, 'funs');
+});
+
+test('no near miss is reported when the song is just wrong', () => {
+  assert.equal(game.validate('alone', 4, []).nearMiss, null);
 });
 
 test('an unknown song id is refused rather than crashing', () => {

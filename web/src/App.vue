@@ -86,12 +86,16 @@ watch(query, (q) => {
   }, 220);
 });
 
-const reasonFor = (verdict, w) =>
-  ({
+const reasonFor = (verdict, w, nearMiss) => {
+  // Matching is exact, but a plural/singular miss is common enough to name
+  // specifically rather than leave the player guessing why it didn't chain.
+  if (verdict === 'no_line' && nearMiss) return `So close — that song has “${nearMiss}”, not “${w}”`;
+  return ({
     no_line: `“${w}” isn’t in that song`,
     already_used: 'Already in your chain',
     unknown_song: 'That song isn’t in the catalog',
   })[verdict] ?? 'Doesn’t chain';
+};
 
 async function choose(song) {
   if (busy.value) return;
@@ -108,7 +112,7 @@ async function choose(song) {
     } else {
       shake.value = true;
       setTimeout(() => (shake.value = false), 420);
-      flash(reasonFor(r.verdict, inPlay));
+      flash(reasonFor(r.verdict, inPlay, r.nearMiss));
       if (r.eliminated) result.value = await api.giveUp(session.value.sessionId);
     }
   } catch (e) {

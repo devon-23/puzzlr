@@ -29,7 +29,7 @@ export const rarityOf = (solutionCount) => RARITY.find((r) => solutionCount <= r
 /** Long chains are the brag, but they still have to paste into a post. */
 const MAX_ROWS = 25;
 
-export function buildShare({ puzzle, links, undos = 0, strikes = 0, siteUrl = 'puzzlr.app' }) {
+export function buildShare({ puzzle, links, undos = 0, strikes = 0, siteUrl = 'puzzlr.duckdns.org' }) {
   const squares = links.map((l) => rarityOf(l.solution_count).square);
 
   let grid;
