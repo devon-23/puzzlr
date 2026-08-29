@@ -199,6 +199,7 @@ app.post('/api/chain', (req, res) => {
       ok: false,
       verdict: result.verdict,
       song: result.song && { title: result.song.title, artist: result.song.artist },
+      nearMiss: result.nearMiss ?? null,
       ...stateOf(S.byId.get(sess.id)),
       eliminated: out,
     });

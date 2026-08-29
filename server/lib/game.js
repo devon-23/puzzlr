@@ -47,6 +47,21 @@ export const Verdict = {
 
 const ftsQuote = (t) => `"${t.replace(/"/g, '""')}"`;
 
+/** English plural/singular shapes worth checking as a near miss, most-likely first. */
+function pluralVariants(word) {
+  const out = new Set();
+  if (word.endsWith('ies') && word.length > 4) out.add(`${word.slice(0, -3)}y`);
+  else if (word.endsWith('y') && word.length > 2 && !'aeiou'.includes(word[word.length - 2])) {
+    out.add(`${word.slice(0, -1)}ies`);
+  }
+  if (word.endsWith('es')) out.add(word.slice(0, -2));
+  if (word.endsWith('s') && !word.endsWith('ss')) out.add(word.slice(0, -1));
+  out.add(`${word}s`);
+  out.add(`${word}es`);
+  out.delete(word);
+  return [...out];
+}
+
 export class Game {
   constructor(db) {
     this.db = db;
@@ -132,7 +147,7 @@ export class Game {
 
     const seenWords = new Set(usedWords);
     const lines = this.q.linesFor.all(songId, word);
-    if (!lines.length) return { verdict: Verdict.NO_LINE, song };
+    if (!lines.length) return { verdict: Verdict.NO_LINE, song, nearMiss: this.nearMiss(word, songId) };
 
     const ranked = lines
       .map((l) => {
@@ -161,6 +176,19 @@ export class Game {
       snippet: ranked[0].snippet,
       clipped: !!ranked[0].clipped,
     };
+  }
+
+  /**
+   * The one exception to exact matching being invisible: singular/plural is
+   * the single most common near miss, so a rejected guess is worth checking
+   * for it and saying so. Matching itself stays exact — no equivalence class,
+   * just an honest reason when a strike is really just a spelling technicality.
+   */
+  nearMiss(word, songId) {
+    for (const variant of pluralVariants(word)) {
+      if (this.q.linesFor.all(songId, variant).length) return variant;
+    }
+    return null;
   }
 
   /**

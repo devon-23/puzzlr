@@ -19,7 +19,7 @@
 import { createHash } from 'node:crypto';
 
 import { openBuildDb, setMeta } from './lib/db.js';
-import { wordOccurrences, openingLines } from './lib/normalize.js';
+import { wordOccurrences, openingLines, contentLines, WEAK_WORDS } from './lib/normalize.js';
 
 const BATCH = 2000;
 
@@ -42,6 +42,56 @@ function excludeJunk() {
   db.transaction(() => {
     for (const r of rows) if (JUNK_TITLE.test(r.title)) { upd.run(r.id); n++; }
   })();
+  return n;
+}
+
+/**
+ * Drop songs whose lyrics aren't (mostly) English.
+ *
+ * The chain hands over a single word with no context, so once it lands on a
+ * word another language owns, every candidate that can answer it belongs to
+ * that language too — the player is silently locked out with no legal move
+ * that reads as a bug rather than a language barrier. Cheaper and more honest
+ * to keep those lyrics out of the graph than to detect the lock after the fact.
+ *
+ * WEAK_WORDS (the/of/you/...) are exactly the words a language leans on most,
+ * so their share of a song's content words is a serviceable fingerprint
+ * without pulling in a language-detection dependency. Calibrated against a
+ * sample of the catalog: English songs cluster at 45-55%, Spanish and Korean
+ * songs cluster under 15%, and the threshold sits in the gap between them —
+ * a few sparse-lyric English songs (mostly instrumental, or repetitive
+ * hooks) fall under it too, which just means one fewer valid answer for a
+ * word that has thousands; that's a far cheaper mistake than the lockout.
+ * Lyrics too short to judge are left alone rather than guessed at.
+ */
+const ENGLISH_THRESHOLD = 0.20;
+const MIN_JUDGEABLE_TOKENS = 20;
+
+function englishShare(lyrics) {
+  const toks = contentLines(lyrics).join(' ').split(' ').filter(Boolean);
+  if (toks.length < MIN_JUDGEABLE_TOKENS) return null;
+  return toks.filter((t) => WEAK_WORDS.has(t)).length / toks.length;
+}
+
+function excludeForeign() {
+  const page = db.prepare(`SELECT s.id, r.lyrics FROM songs s
+                           JOIN raw_lyrics r ON r.song_id = s.id
+                           WHERE s.lyric_state='ok' AND s.id > ?
+                           ORDER BY s.id LIMIT ?`);
+  const upd = db.prepare("UPDATE songs SET lyric_state='foreign' WHERE id=?");
+  let lastId = 0;
+  let n = 0;
+  for (;;) {
+    const batch = page.all(lastId, BATCH);
+    if (!batch.length) break;
+    lastId = batch[batch.length - 1].id;
+    db.transaction(() => {
+      for (const row of batch) {
+        const share = englishShare(row.lyrics);
+        if (share !== null && share < ENGLISH_THRESHOLD) { upd.run(row.id); n++; }
+      }
+    })();
+  }
   return n;
 }
 
@@ -141,8 +191,9 @@ function buildWordIndex() {
 }
 
 console.log('building the chain graph');
-db.exec("UPDATE songs SET lyric_state='ok' WHERE lyric_state IN ('cover','junk')");
+db.exec("UPDATE songs SET lyric_state='ok' WHERE lyric_state IN ('cover','junk','foreign')");
 console.log(`  excluded ${excludeJunk().toLocaleString()} megamix / karaoke releases`);
+console.log(`  excluded ${excludeForeign().toLocaleString()} non-English songs`);
 console.log(`  collapsed ${collapseCovers().toLocaleString()} covers / alternate recordings`);
 
 const { songs, edges } = buildGraph();

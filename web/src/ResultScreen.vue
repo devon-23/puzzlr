@@ -66,7 +66,7 @@ const story = computed(() =>
     '',
     flowText.value,
     '',
-    'puzzlr.app',
+    'puzzlr.duckdns.org',
   ].join('\n'),
 );
 
