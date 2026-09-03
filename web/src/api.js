@@ -122,6 +122,7 @@ export const api = {
   chain: (sessionId, songId) => post('/api/chain', { sessionId, songId }),
   undo: (sessionId) => post('/api/undo', { sessionId }),
   giveUp: (sessionId) => post('/api/giveup', { sessionId }),
+  bestChain: (sessionId) => post('/api/best-chain', { sessionId }),
   leaderboard: (puzzle) => fetch(`/api/leaderboard?puzzle=${puzzle}`).then((r) => r.json()),
   setName: (sessionId, name) => post('/api/name', { sessionId, name }),
 };

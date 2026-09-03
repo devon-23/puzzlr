@@ -114,6 +114,29 @@ async function saveName() {
   }
 }
 
+/**
+ * The best chain the graph could support from today's start, found by
+ * search rather than played — see Game#bestChain. Run on demand, not on
+ * mount: it's a heuristic search, not a lookup, so it's presented as
+ * something the player asks for rather than a number that just appears.
+ */
+const bestChain = ref(null);
+const bestChainLoading = ref(false);
+const bestChainError = ref(null);
+
+async function findBestChain() {
+  if (bestChainLoading.value || bestChain.value) return;
+  bestChainLoading.value = true;
+  bestChainError.value = null;
+  try {
+    bestChain.value = await api.bestChain(props.result.sessionId);
+  } catch (e) {
+    bestChainError.value = e.message;
+  } finally {
+    bestChainLoading.value = false;
+  }
+}
+
 async function copy(text, which) {
   try {
     await navigator.clipboard.writeText(text);
@@ -201,6 +224,37 @@ async function copy(text, which) {
           <span class="a">{{ s.artist }}</span>
         </li>
       </ul>
+    </section>
+
+    <section class="best">
+      <h2>The longest possible chain</h2>
+      <p v-if="!bestChain && !bestChainLoading" class="sub">
+        Search the graph from today's opener for the longest run it can support —
+        not necessarily <em>the</em> longest, just the best one a heuristic search
+        turns up in under a second.
+      </p>
+      <button v-if="!bestChain" @click="findBestChain" :disabled="bestChainLoading">
+        {{ bestChainLoading ? 'Searching…' : 'Find the longest chain' }}
+      </button>
+      <p v-if="bestChainError" class="note warn">{{ bestChainError }}</p>
+      <template v-if="bestChain">
+        <p class="sub">
+          Best found: <b>{{ bestChain.links }}</b> link{{ bestChain.links === 1 ? '' : 's' }} —
+          you got <b>{{ result.links }}</b>.
+        </p>
+        <div class="chain">
+          <GuessBar
+            v-for="(c, i) in bestChain.chain"
+            :key="i"
+            :word="c.word"
+            :answers="c.answers ?? 0"
+            :title="c.title"
+            :artist="c.artist"
+            :snippet="c.snippet"
+            :index="i + 1"
+          />
+        </div>
+      </template>
     </section>
 
     <pre class="preview">{{ result.share.grid }}</pre>
@@ -295,6 +349,11 @@ h2 {
 }
 .missed .t { font-weight: 600; font-size: 14.5px; }
 .missed .a { font-size: 13px; color: var(--fg-mute); }
+
+.best { text-align: left; margin-bottom: 30px; }
+.best .sub { margin: 0 0 10px; font-size: 13px; color: var(--fg-mute); }
+.best .sub b { color: var(--fg-soft); }
+.best .chain { margin-top: 14px; }
 
 .preview {
   margin: 0 0 28px; padding: 14px; background: var(--fill); border-radius: 6px;

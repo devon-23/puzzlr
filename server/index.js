@@ -176,7 +176,7 @@ app.post('/api/search', (req, res) => {
   if (!sess) return res.status(404).json({ error: 'no such session' });
   if (rateLimited(sess.device_id)) return res.status(429).json({ error: 'slow down' });
 
-  const { results, lyricSearched, notice } = game.search(q ?? '');
+  const { results, lyricSearched, notice } = game.search(q ?? '', sess.current_word);
   res.json({ results, lyricSearched, notice, minLyricTokens: MIN_LYRIC_TOKENS });
 });
 
@@ -199,7 +199,6 @@ app.post('/api/chain', (req, res) => {
       ok: false,
       verdict: result.verdict,
       song: result.song && { title: result.song.title, artist: result.song.artist },
-      nearMiss: result.nearMiss ?? null,
       ...stateOf(S.byId.get(sess.id)),
       eliminated: out,
     });
@@ -336,6 +335,30 @@ app.post('/api/name', (req, res) => {
 
   players.prepare('UPDATE sessions SET display_name=? WHERE device_id=?').run(clean, sess.device_id);
   res.json({ name: clean });
+});
+
+/**
+ * The best-possible-chain search only depends on the puzzle's fixed start
+ * song, so every player asking about the same puzzle gets the same answer —
+ * cache it in memory so only the first request of the day pays the search
+ * cost (it runs synchronously on the shared thread, see Game#bestChain).
+ */
+const bestChainCache = new Map();
+
+app.post('/api/best-chain', (req, res) => {
+  const { sessionId } = req.body ?? {};
+  const sess = S.byId.get(sessionId ?? '');
+  if (!sess) return res.status(404).json({ error: 'no such session' });
+
+  const cached = bestChainCache.get(sess.puzzle);
+  if (cached) return res.json(cached);
+
+  const start = S.steps.all(sess.id)[0];
+  if (!start?.next_word) return res.status(503).json({ error: 'no start for this puzzle' });
+
+  const result = game.bestChain(start.song_id, start.next_word);
+  bestChainCache.set(sess.puzzle, result);
+  res.json(result);
 });
 
 app.get('/api/leaderboard', (req, res) => {

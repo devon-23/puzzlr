@@ -62,6 +62,17 @@ function pluralVariants(word) {
   return [...out];
 }
 
+/** A random n-element sample of `arr`, via partial Fisher-Yates. */
+function sampleFrom(arr, n) {
+  if (arr.length <= n) return arr;
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > copy.length - 1 - n; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(copy.length - n);
+}
+
 export class Game {
   constructor(db) {
     this.db = db;
@@ -96,9 +107,23 @@ export class Game {
 
   // ── search ────────────────────────────────────────────────────────────────
 
-  search(rawQuery) {
+  search(rawQuery, currentWord = null) {
     const tokens = tokenize(rawQuery);
     if (!tokens.length) return { results: [], lyricSearched: false, notice: null };
+
+    // Anti-cheat: typing the target word itself (or a trivial plural/singular
+    // spelling of it) isn't searching for a song — it's asking the title index
+    // to just hand back the answer. Refuse it the same way a too-short lyric
+    // search is refused, and say why.
+    if (currentWord) {
+      const targetForms = new Set([currentWord, ...pluralVariants(currentWord)]);
+      if (tokens.every((t) => targetForms.has(t))) {
+        return {
+          results: [], lyricSearched: false,
+          notice: 'That just searches for the word itself — try a song title, artist, or a few words of the lyric.',
+        };
+      }
+    }
 
     const seen = new Map();
     const add = (rows) => {
@@ -146,8 +171,19 @@ export class Game {
     if (new Set(usedSongIds).has(songId)) return { verdict: Verdict.ALREADY_USED, song };
 
     const seenWords = new Set(usedWords);
-    const lines = this.q.linesFor.all(songId, word);
-    if (!lines.length) return { verdict: Verdict.NO_LINE, song, nearMiss: this.nearMiss(word, songId) };
+
+    // Singular/plural is the single most common near miss: the player named a
+    // real line, just not in the exact inflection the prompt happened to be
+    // in. That's a spelling technicality, not a wrong guess, so accept the
+    // closest variant that actually appears rather than strike for it.
+    let lines = this.q.linesFor.all(songId, word);
+    if (!lines.length) {
+      for (const variant of pluralVariants(word)) {
+        lines = this.q.linesFor.all(songId, variant);
+        if (lines.length) break;
+      }
+    }
+    if (!lines.length) return { verdict: Verdict.NO_LINE, song };
 
     const ranked = lines
       .map((l) => {
@@ -176,19 +212,6 @@ export class Game {
       snippet: ranked[0].snippet,
       clipped: !!ranked[0].clipped,
     };
-  }
-
-  /**
-   * The one exception to exact matching being invisible: singular/plural is
-   * the single most common near miss, so a rejected guess is worth checking
-   * for it and saying so. Matching itself stays exact — no equivalence class,
-   * just an honest reason when a strike is really just a spelling technicality.
-   */
-  nearMiss(word, songId) {
-    for (const variant of pluralVariants(word)) {
-      if (this.q.linesFor.all(songId, variant).length) return variant;
-    }
-    return null;
   }
 
   /**
@@ -228,4 +251,79 @@ export class Game {
       .map((s) => ({ id: s.song_id, title: s.title, artist: s.artist }));
   }
 
+  // ── best-possible-chain search ───────────────────────────────────────────
+
+  /**
+   * How long a chain COULD run from a given start, found by search rather
+   * than played.
+   *
+   * "Try every path" is longest-simple-path on a graph with millions of
+   * edges — NP-hard and nowhere near tractable in a request. So this runs
+   * many short greedy rollouts instead: at each step, sample a handful of
+   * songs that answer the current word, and go with whichever keeps the next
+   * word most answerable (breaking ties with a little randomness, so repeat
+   * rollouts explore different branches rather than retracing one greedy
+   * path). Keep the longest rollout found before the time budget runs out.
+   *
+   * This runs synchronously on the shared request thread (better-sqlite3 is
+   * sync), so the budget is kept deliberately short — it's "the best chain
+   * found in under a second," never claimed as the provably longest one.
+   */
+  bestChain(startSongId, startWord, opts = {}) {
+    const { timeBudgetMs = 900, sampleSize = 25, lookTop = 5, maxSteps = 400 } = opts;
+    const deadline = Date.now() + timeBudgetMs;
+
+    let best = { chain: [], rarity: 0 };
+    while (Date.now() < deadline) {
+      const rollout = this.#rollout(startSongId, startWord, sampleSize, lookTop, maxSteps, deadline);
+      if (rollout.chain.length > best.chain.length ||
+          (rollout.chain.length === best.chain.length && rollout.rarity > best.rarity)) {
+        best = rollout;
+      }
+    }
+    return { links: best.chain.length, chain: best.chain };
+  }
+
+  #rollout(startSongId, startWord, sampleSize, lookTop, maxSteps, deadline) {
+    const usedSongs = new Set([startSongId]);
+    const usedWords = new Set();
+    const chain = [];
+    let word = startWord;
+    let rarity = 0;
+
+    for (let i = 0; i < maxSteps && Date.now() < deadline; i++) {
+      const usedSongsArr = [...usedSongs];
+      const pool = sampleFrom(this.openAnswers(word, usedSongsArr), sampleSize);
+      if (!pool.length) break;
+
+      const usedWordsArr = [...usedWords];
+      const scored = pool
+        .map((s) => ({ s, r: this.validate(word, s.song_id, usedSongsArr, usedWordsArr) }))
+        .filter((x) => x.r.verdict === Verdict.CHAINED);
+      if (!scored.length) break;
+
+      // Alive branches (still have somewhere to go) always beat dead ones;
+      // among alive branches, favor whichever next word has the most answers
+      // of its own, since that is the one least likely to strand the chain.
+      scored.sort((a, b) => {
+        const aAlive = a.r.nextWord !== null;
+        const bAlive = b.r.nextWord !== null;
+        if (aAlive !== bAlive) return aAlive ? -1 : 1;
+        return (b.r.nextAnswers ?? 0) - (a.r.nextAnswers ?? 0);
+      });
+      const pick = scored[Math.floor(Math.random() * Math.min(lookTop, scored.length))];
+
+      const answers = this.answerCount(word);
+      chain.push({
+        songId: pick.s.song_id, title: pick.s.title, artist: pick.s.artist,
+        word, answers, nextWord: pick.r.nextWord, snippet: pick.r.snippet,
+      });
+      rarity += 1 / Math.max(1, answers);
+      usedWords.add(word);
+      usedSongs.add(pick.s.song_id);
+      if (!pick.r.nextWord) break;
+      word = pick.r.nextWord;
+    }
+    return { chain, rarity };
+  }
 }
