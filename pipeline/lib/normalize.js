@@ -17,8 +17,8 @@ const MARKER_WORDS =
  */
 const ADLIB_WORDS = new Set([
   'ha', 'hah', 'aha', 'oh', 'ooh', 'oooh', 'ohh', 'uh', 'uhh', 'huh', 'ah', 'ahh',
-  'yeah', 'yea', 'yah', 'ya', 'yo', 'hey', 'ay', 'aye', 'eh', 'mm', 'mmm', 'hmm',
-  'woo', 'whoo', 'wooh', 'wo', 'la', 'na', 'da', 'do', 'ba', 'sha', 'doo', 'dum',
+  'yeah', 'yea', 'yah', 'ya', 'yo', 'hey', 'ay', 'aye', 'eh', 'mm', 'mmm', 'mmh', 'mmhm',
+  'hmm', 'hm', 'woo', 'whoo', 'wooh', 'wo', 'la', 'na', 'da', 'do', 'ba', 'sha', 'doo', 'dum',
   'ooo', 'ohhh', 'shh', 'psh', 'brr', 'skrrt', 'ayy', 'ey', 'mhm', 'nah',
 ]);
 
@@ -117,8 +117,15 @@ not no nor all any some more most too own same such each few other
 oh ooh ah ha yeah yea uh huh hey ay yo mm mmm hmm woo la na da doo ba
 `.trim().split(/\s+/));
 
-/** A word is chainable if it can be handed off on its own. */
-export const isLinkWord = (w) => !!w && w.length > 1 && !WEAK_WORDS.has(w);
+/**
+ * A word is chainable if it can be handed off on its own.
+ *
+ * ADLIB_WORDS is checked here too, not just by isAdlibLine: an interjection
+ * like "mmh" sitting inside an otherwise real line (isAdlibLine only drops a
+ * line that is *nothing but* ad-libs) must still never become the word a
+ * player is handed — nobody can chain off of it on purpose.
+ */
+export const isLinkWord = (w) => !!w && w.length > 1 && !WEAK_WORDS.has(w) && !ADLIB_WORDS.has(w);
 
 /**
  * Every way a song can be reached, and what it hands over.

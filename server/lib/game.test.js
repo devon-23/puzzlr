@@ -93,16 +93,12 @@ test('another song by the same artist is allowed', () => {
   assert.equal(game.validate('alone', 5, [1]).verdict, Verdict.CHAINED);
 });
 
-test('a plural-only near miss is named, not silently allowed', () => {
-  // Song 6 has "funs" but never the exact prompt word "fun" — still a strike,
-  // but the rejection says why rather than leaving it a mystery.
+test('a plural-only near miss chains instead of striking', () => {
+  // Song 6 has "funs" but never the exact prompt word "fun" — that's a
+  // spelling technicality, not a wrong guess, so it chains anyway.
   const r = game.validate('fun', 6, []);
-  assert.equal(r.verdict, Verdict.NO_LINE);
-  assert.equal(r.nearMiss, 'funs');
-});
-
-test('no near miss is reported when the song is just wrong', () => {
-  assert.equal(game.validate('alone', 4, []).nearMiss, null);
+  assert.equal(r.verdict, Verdict.CHAINED);
+  assert.equal(r.nextWord, 'night');
 });
 
 test('an unknown song id is refused rather than crashing', () => {
@@ -166,7 +162,42 @@ test('a stray quote in the query does not break the FTS expression', () => {
   assert.doesNotThrow(() => game.search('kettle "whistles empty'));
 });
 
+test('typing the bare target word does not hand back title matches', () => {
+  // Song 1's title is "Leave Me Alone" — searching the current word alone
+  // would otherwise be a free way to find every song that answers it.
+  const r = game.search('alone', 'alone');
+  assert.equal(r.results.length, 0);
+  assert.ok(r.notice);
+});
+
+test('a plural/singular spelling of the target word is refused the same way', () => {
+  const r = game.search('funs', 'fun');
+  assert.equal(r.results.length, 0);
+});
+
+test('searching a real title still works when it is not the bare target word', () => {
+  const r = game.search('ladder', 'alone');
+  assert.ok(r.results.some((x) => x.id === 4));
+});
+
 // ── the run-up fragment ──────────────────────────────────────────────────────
+
+// ── best-possible-chain search ──────────────────────────────────────────────
+
+test('bestChain finds a valid, non-repeating path from the start', () => {
+  const r = game.bestChain(4, 'fun', { timeBudgetMs: 50, sampleSize: 10, lookTop: 3, maxSteps: 20 });
+  assert.equal(r.links, r.chain.length);
+  assert.ok(r.links >= 1, 'song 4 answering "fun" reaches at least one link');
+  assert.equal(r.chain[0].word, 'fun');
+  const songIds = r.chain.map((c) => c.songId);
+  assert.equal(songIds.length, new Set(songIds).size, 'no song is reused');
+  assert.ok(!songIds.includes(4), 'the start song itself is never reused');
+});
+
+test('bestChain returns nothing when the start word has no answers left', () => {
+  const r = game.bestChain(1, 'nonsense', { timeBudgetMs: 20 });
+  assert.deepEqual(r, { links: 0, chain: [] });
+});
 
 test('a chained song reports the fragment that made the link', () => {
   const r = game.validate('alone', 2, []);
