@@ -11,6 +11,8 @@
 import Database from 'better-sqlite3';
 import { resolve } from 'node:path';
 
+import { todayPuzzle } from '../server/lib/players.js';
+
 const BASE = process.env.BASE ?? 'http://localhost:3000';
 const catalog = new Database(resolve('data/catalog.db'), { readonly: true });
 
@@ -97,11 +99,16 @@ check('one good link to start', b1.ok === true, `"${b0.word}" → ${firstPick.ti
 const repeat = await post('/api/chain', { sessionId: bsid, songId: firstPick.id });
 check('replaying a used song is refused', repeat.body.ok === false, repeat.body.verdict);
 check('verdict is already_used', repeat.body.verdict === 'already_used');
-check('a reuse costs a strike', repeat.body.strikes === 1, `${repeat.body.strikes}`);
+// A repeat is a warning, not a wrong guess: the player knows the song works,
+// they just already spent it.
+check('a reuse costs no strike', repeat.body.strikes === 0, `${repeat.body.strikes}`);
 
 const wrong = noLineFor.get(b1.word);
+const s1 = await post('/api/chain', { sessionId: bsid, songId: wrong.id });
+check('a song not containing the word is refused', s1.body.verdict === 'no_line', s1.body.verdict);
+check('one strike, still alive', s1.body.strikes === 1 && !s1.body.eliminated);
+
 const s2 = await post('/api/chain', { sessionId: bsid, songId: wrong.id });
-check('a song not containing the word is refused', s2.body.verdict === 'no_line', s2.body.verdict);
 check('two strikes, still alive', s2.body.strikes === 2 && !s2.body.eliminated);
 
 const s3 = await post('/api/chain', { sessionId: bsid, songId: wrong.id });
@@ -119,7 +126,9 @@ check('share grid exists', !!result.share?.grid);
 check('share chain is words only', !!result.share?.poem && !result.share.poem.includes('\n'));
 check('every link carries its run-up fragment', result.detail.every((d) => !!d.snippet));
 check('the opening word is an easy one', start.answers >= 400, `${start.answers.toLocaleString()} answers`);
-check('puzzle numbering starts at 1', start.puzzle >= 1 && start.puzzle < 10, `#${start.puzzle}`);
+// Today's number, not a fixed range: the puzzle count climbs by one a day, so
+// any hardcoded ceiling here is a time bomb that fails on its own schedule.
+check('puzzle number matches today', start.puzzle === todayPuzzle(), `#${start.puzzle}`);
 check('songs-you-could-have-used is present', (result.couldHaveUsed?.songs?.length ?? 0) > 0,
   result.couldHaveUsed ? `${result.couldHaveUsed.songs.length} for "${result.couldHaveUsed.word}"` : 'none');
 check('each fragment ends on the word handed over',

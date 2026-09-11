@@ -89,7 +89,7 @@ watch(query, (q) => {
 const reasonFor = (verdict, w) => {
   return ({
     no_line: `“${w}” isn’t in that song`,
-    already_used: 'Already in your chain',
+    already_used: 'Already used that one — no strike, try another',
     unknown_song: 'That song isn’t in the catalog',
   })[verdict] ?? 'Doesn’t chain';
 };
@@ -107,8 +107,12 @@ async function choose(song) {
     if (r.ok) {
       flash(r.exhausted ? 'Chained — but nothing follows that word' : 'Chained', true);
     } else {
-      shake.value = true;
-      setTimeout(() => (shake.value = false), 420);
+      // A repeat song is a warning, not a strike — don't shake the prompt as
+      // if the guess were wrong.
+      if (r.verdict !== 'already_used') {
+        shake.value = true;
+        setTimeout(() => (shake.value = false), 420);
+      }
       flash(reasonFor(r.verdict, inPlay));
       if (r.eliminated) result.value = await api.giveUp(session.value.sessionId);
     }

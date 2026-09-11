@@ -58,6 +58,8 @@ function makeCatalog() {
   for (const id of [1, 3, 5]) link(id, 'rain', 'night');
   for (const id of [2, 3, 4]) link(id, 'night', 'silver');
   link(6, 'funs', 'night'); // near-miss fixture: plural only, singular never appears
+  link(6, 'workin', 'night'); // g-dropped only, "working" never appears
+  link(6, 'sin', 'night'); // a real, unrelated word — never a "sing" near miss
 
   db.exec(`INSERT INTO words (word, song_count)
            SELECT word, COUNT(DISTINCT song_id) FROM occurrences GROUP BY word`);
@@ -99,6 +101,26 @@ test('a plural-only near miss chains instead of striking', () => {
   const r = game.validate('fun', 6, []);
   assert.equal(r.verdict, Verdict.CHAINED);
   assert.equal(r.nextWord, 'night');
+});
+
+test('a g-dropped near miss chains instead of striking', () => {
+  // Song 6 has "workin" but never "working" — the sung spelling, not the
+  // written one, so it should chain the same as a plural near miss.
+  const r = game.validate('working', 6, []);
+  assert.equal(r.verdict, Verdict.CHAINED);
+  assert.equal(r.nextWord, 'night');
+});
+
+test('the reverse g-dropped direction also chains', () => {
+  // Prompt word can itself be a sung ending, e.g. handed over as "workin".
+  const r = game.validate('workin', 6, []);
+  assert.equal(r.verdict, Verdict.CHAINED);
+});
+
+test('g-dropping never applies to a collision word like "sing"/"sin"', () => {
+  // Song 6 has "sin" but that must never count as a near miss for "sing" —
+  // they are different, unrelated words.
+  assert.equal(game.validate('sing', 6, []).verdict, Verdict.NO_LINE);
 });
 
 test('an unknown song id is refused rather than crashing', () => {
