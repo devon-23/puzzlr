@@ -62,6 +62,33 @@ function pluralVariants(word) {
   return [...out];
 }
 
+/**
+ * "-ing" sung as "-in'", and back. LRCLIB transcribes lyrics as sung, so the
+ * catalog is full of lines ending "workin'" (which tokenizes to "workin" —
+ * normalize.js drops a trailing apostrophe) where a player naturally types
+ * "working". Same spelling technicality as plural/singular, not a wrong
+ * guess.
+ *
+ * A short exclusion list guards the handful of common words where dropping
+ * the g lands on a real, unrelated word ("sing"→"sin", "king"→"kin",
+ * "wing"→"win", "thing"→"thin") — everything else short enough to collide
+ * is already caught by the length check.
+ */
+const GERUND_COLLISIONS = new Set(['sing', 'king', 'wing', 'thing']);
+
+function gDropVariants(word) {
+  if (word.endsWith('ing') && word.length > 4 && !GERUND_COLLISIONS.has(word)) {
+    return [`${word.slice(0, -3)}in`];
+  }
+  if (word.endsWith('in') && word.length > 3) {
+    return [`${word.slice(0, -2)}ing`];
+  }
+  return [];
+}
+
+/** Every near-miss spelling worth checking for a word, most-likely first. */
+const spellingVariants = (word) => [...pluralVariants(word), ...gDropVariants(word)];
+
 /** A random n-element sample of `arr`, via partial Fisher-Yates. */
 function sampleFrom(arr, n) {
   if (arr.length <= n) return arr;
@@ -116,7 +143,7 @@ export class Game {
     // to just hand back the answer. Refuse it the same way a too-short lyric
     // search is refused, and say why.
     if (currentWord) {
-      const targetForms = new Set([currentWord, ...pluralVariants(currentWord)]);
+      const targetForms = new Set([currentWord, ...spellingVariants(currentWord)]);
       if (tokens.every((t) => targetForms.has(t))) {
         return {
           results: [], lyricSearched: false,
@@ -172,13 +199,14 @@ export class Game {
 
     const seenWords = new Set(usedWords);
 
-    // Singular/plural is the single most common near miss: the player named a
-    // real line, just not in the exact inflection the prompt happened to be
-    // in. That's a spelling technicality, not a wrong guess, so accept the
-    // closest variant that actually appears rather than strike for it.
+    // Singular/plural and g-dropping ("workin'" vs "working") are the common
+    // near misses: the player named a real line, just not in the exact
+    // spelling the prompt happened to be in. That's a spelling technicality,
+    // not a wrong guess, so accept the closest variant that actually appears
+    // rather than strike for it.
     let lines = this.q.linesFor.all(songId, word);
     if (!lines.length) {
-      for (const variant of pluralVariants(word)) {
+      for (const variant of spellingVariants(word)) {
         lines = this.q.linesFor.all(songId, variant);
         if (lines.length) break;
       }

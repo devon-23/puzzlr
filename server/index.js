@@ -192,7 +192,9 @@ app.post('/api/chain', (req, res) => {
   const result = game.validate(sess.current_word, Number(songId), used, seenWords);
 
   if (result.verdict !== Verdict.CHAINED) {
-    S.addStrike.run(sess.id);
+    // A song already in the chain is a warning, not a wrong guess — the
+    // player clearly knows it works, they just already spent it. No strike.
+    if (result.verdict !== Verdict.ALREADY_USED) S.addStrike.run(sess.id);
     const out = S.byId.get(sess.id).strikes >= MAX_STRIKES;
     if (out) S.finish.run(Date.now(), sess.id);
     return res.json({

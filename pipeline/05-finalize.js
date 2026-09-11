@@ -77,12 +77,24 @@ CREATE TABLE daily_pool (seq INTEGER PRIMARY KEY, song_id INTEGER NOT NULL);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 `);
 
+// Streamed rather than `.all()`'d: the occurrences table runs into the
+// millions of rows, and materializing all of them into one JS array at once
+// blows the heap. `.iterate()` pulls rows from SQLite lazily; batching the
+// inserts keeps the transactions fast without holding more than one batch
+// in memory at a time.
+const COPY_BATCH = 5000;
 const copy = (label, selectSql, insertSql) => {
-  const rows = build.prepare(selectSql).all();
   const stmt = cat.prepare(insertSql);
-  cat.transaction(() => { for (const r of rows) stmt.run(r); })();
-  console.log(`  ${label.padEnd(11)} ${rows.length.toLocaleString()}`);
-  return rows.length;
+  const insertBatch = cat.transaction((rows) => { for (const r of rows) stmt.run(r); });
+  let n = 0;
+  let batch = [];
+  for (const r of build.prepare(selectSql).iterate()) {
+    batch.push(r);
+    if (batch.length >= COPY_BATCH) { insertBatch(batch); n += batch.length; batch = []; }
+  }
+  if (batch.length) { insertBatch(batch); n += batch.length; }
+  console.log(`  ${label.padEnd(11)} ${n.toLocaleString()}`);
+  return n;
 };
 
 console.log('building catalog.db');
