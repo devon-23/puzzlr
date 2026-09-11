@@ -28,13 +28,29 @@ import { resolve } from 'node:path';
 
 import { openBuildDb } from './lib/db.js';
 import { contentLines, OPENING_LINE_COUNT } from './lib/normalize.js';
+import { assignDailyPool } from './lib/pool.js';
 
 const OUT = resolve('data/catalog.db');
 const PURGE = process.env.PURGE === '1';
 const MIN_ANSWERS = 3;
 
 const build = openBuildDb();
-if (existsSync(OUT)) unlinkSync(OUT);
+
+// Read the seats the last build handed out before the file is replaced —
+// they have to survive into the new catalog or every played puzzle silently
+// becomes a different game. See assignDailyPool.
+const previousPool = new Map();
+if (existsSync(OUT)) {
+  const old = new Database(OUT, { readonly: true });
+  try {
+    for (const r of old.prepare('SELECT seq, song_id FROM daily_pool').all()) {
+      previousPool.set(r.seq, r.song_id);
+    }
+  } catch { /* a catalog from before the pool existed */ }
+  old.close();
+  unlinkSync(OUT);
+}
+
 const cat = new Database(OUT);
 
 cat.exec(`
@@ -151,13 +167,18 @@ console.log(`  words       ${cat.prepare('SELECT COUNT(*) c FROM words').get().c
 // Daily starts: well-known songs that hand over a word with room to move.
 {
   const POOL_SIZE = 5000;
-  const eligible = cat.prepare(`
-    SELECT s.id FROM songs s
-    WHERE EXISTS (
-      SELECT 1 FROM occurrences o JOIN words w ON w.word = o.end_word
-      WHERE o.song_id = s.id AND w.song_count >= ?
-    )
-    ORDER BY s.rank DESC, s.id ASC LIMIT ?`).all(MIN_ANSWERS * 3, POOL_SIZE);
+
+  // Every song that can open a puzzle, gathered in one pass. The per-song
+  // EXISTS this replaces had no index to use for song_id, so it rescanned the
+  // whole occurrences table for each candidate.
+  const openers = new Set(cat.prepare(`
+    SELECT DISTINCT o.song_id FROM occurrences o JOIN words w ON w.word = o.end_word
+    WHERE w.song_count >= ?`).pluck().all(MIN_ANSWERS * 3));
+
+  const eligible = cat.prepare('SELECT id FROM songs ORDER BY rank DESC, id ASC')
+    .pluck().all()
+    .filter((id) => openers.has(id))
+    .slice(0, POOL_SIZE);
 
   let seed = 0x9e3779b9;
   const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 0x100000000);
@@ -165,9 +186,14 @@ console.log(`  words       ${cat.prepare('SELECT COUNT(*) c FROM words').get().c
     const j = Math.floor(rand() * (i + 1));
     [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
   }
+
+  const pool = assignDailyPool({ previous: previousPool, eligible, openers, size: POOL_SIZE });
+  const rows = [...pool].sort((a, b) => a[0] - b[0]);
+  const held = rows.filter(([seq, id]) => previousPool.get(seq) === id).length;
+
   const stmt = cat.prepare('INSERT INTO daily_pool (seq, song_id) VALUES (?,?)');
-  cat.transaction(() => eligible.forEach((r, i) => stmt.run(i, r.id)))();
-  console.log(`  daily_pool  ${eligible.length.toLocaleString()}`);
+  cat.transaction(() => { for (const [seq, id] of rows) stmt.run(seq, id); })();
+  console.log(`  daily_pool  ${rows.length.toLocaleString()} (${held.toLocaleString()} held from the previous build)`);
 }
 
 const setMeta = cat.prepare('INSERT INTO meta(key,value) VALUES(?,?)');
