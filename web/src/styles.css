@@ -23,16 +23,22 @@
   --band-uncommon: #c9a227;
   --band-rare: #d97b32;
   --band-ultra: #cc4b3c;
+  --band-verycommon: #2f8f9e;
+  --band-ubiquitous: #8a8d93;
 
   --band-common-ink: #3d7a41;
   --band-uncommon-ink: #96751a;
   --band-rare-ink: #a95b1f;
   --band-ultra-ink: #b03728;
+  --band-verycommon-ink: #1f6b78;
+  --band-ubiquitous-ink: #6b6e73;
 
   --band-common-bg: #e8f3e9;
   --band-uncommon-bg: #f8f1d9;
   --band-rare-bg: #fbeade;
   --band-ultra-bg: #fbe4e1;
+  --band-verycommon-bg: #e2f1f3;
+  --band-ubiquitous-bg: #eef0f1;
 
   --key: #4f9d54;
   --key-ink: #ffffff;
@@ -53,16 +59,22 @@
     --band-uncommon: #b8931f;
     --band-rare: #c46f2a;
     --band-ultra: #c04536;
+    --band-verycommon: #3a9dab;
+    --band-ubiquitous: #8f9196;
 
     --band-common-ink: #7fc383;
     --band-uncommon-ink: #dcc158;
     --band-rare-ink: #e29457;
     --band-ultra-ink: #e57567;
+    --band-verycommon-ink: #6cc4d1;
+    --band-ubiquitous-ink: #b7b9be;
 
     --band-common-bg: #1d2a1e;
     --band-uncommon-bg: #2a2617;
     --band-rare-bg: #2b1f15;
     --band-ultra-bg: #2c1a17;
+    --band-verycommon-bg: #16292c;
+    --band-ubiquitous-bg: #2a2b2d;
 
     --key: #4f9d54;
     --key-ink: #ffffff;
@@ -83,16 +95,22 @@
   --band-uncommon: #b8931f;
   --band-rare: #c46f2a;
   --band-ultra: #c04536;
+  --band-verycommon: #3a9dab;
+  --band-ubiquitous: #8f9196;
 
   --band-common-ink: #7fc383;
   --band-uncommon-ink: #dcc158;
   --band-rare-ink: #e29457;
   --band-ultra-ink: #e57567;
+  --band-verycommon-ink: #6cc4d1;
+  --band-ubiquitous-ink: #b7b9be;
 
   --band-common-bg: #1d2a1e;
   --band-uncommon-bg: #2a2617;
   --band-rare-bg: #2b1f15;
   --band-ultra-bg: #2c1a17;
+  --band-verycommon-bg: #16292c;
+  --band-ubiquitous-bg: #2a2b2d;
 
   --key: #4f9d54;
   --key-ink: #ffffff;
@@ -100,10 +118,12 @@
 }
 
 /* One class per band, so a row only has to say which band it is. */
-.b-common   { --band: var(--band-common);   --ink: var(--band-common-ink);   --band-bg: var(--band-common-bg); }
-.b-uncommon { --band: var(--band-uncommon); --ink: var(--band-uncommon-ink); --band-bg: var(--band-uncommon-bg); }
-.b-rare     { --band: var(--band-rare);     --ink: var(--band-rare-ink);     --band-bg: var(--band-rare-bg); }
-.b-ultra    { --band: var(--band-ultra);    --ink: var(--band-ultra-ink);    --band-bg: var(--band-ultra-bg); }
+.b-common     { --band: var(--band-common);     --ink: var(--band-common-ink);     --band-bg: var(--band-common-bg); }
+.b-uncommon   { --band: var(--band-uncommon);   --ink: var(--band-uncommon-ink);   --band-bg: var(--band-uncommon-bg); }
+.b-rare       { --band: var(--band-rare);       --ink: var(--band-rare-ink);       --band-bg: var(--band-rare-bg); }
+.b-ultra      { --band: var(--band-ultra);      --ink: var(--band-ultra-ink);      --band-bg: var(--band-ultra-bg); }
+.b-verycommon { --band: var(--band-verycommon); --ink: var(--band-verycommon-ink); --band-bg: var(--band-verycommon-bg); }
+.b-ubiquitous { --band: var(--band-ubiquitous); --ink: var(--band-ubiquitous-ink); --band-bg: var(--band-ubiquitous-bg); }
 
 * { box-sizing: border-box; }
 

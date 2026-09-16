@@ -293,9 +293,14 @@ export class Game {
    * rollouts explore different branches rather than retracing one greedy
    * path). Keep the longest rollout found before the time budget runs out.
    *
-   * This runs synchronously on the shared request thread (better-sqlite3 is
-   * sync), so the budget is kept deliberately short — it's "the best chain
-   * found in under a second," never claimed as the provably longest one.
+   * This runs synchronously start to finish (better-sqlite3 has no async
+   * API) for as long as `timeBudgetMs` allows — the caller decides whether
+   * that's safe to block on. The server runs it in a worker thread with a
+   * multi-second budget (see best-chain-worker.js) so a good search doesn't
+   * stall other players; it's still "the best chain a search turned up in
+   * that time," never claimed as the provably longest one — proving that
+   * would mean enumerating every simple path through a graph with millions
+   * of edges, which no amount of budget here makes tractable.
    */
   bestChain(startSongId, startWord, opts = {}) {
     const { timeBudgetMs = 900, sampleSize = 25, lookTop = 5, maxSteps = 400 } = opts;

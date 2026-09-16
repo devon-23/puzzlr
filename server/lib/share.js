@@ -14,14 +14,23 @@
 /**
  * Rarity bands, scaled for anywhere-in-song matching: a word now typically has
  * dozens to thousands of answers, where the old phrase rule counted in single
- * digits. Ordered green → gold → amber → violet, which reads as escalating
- * scarcity without borrowing red from the strike marker.
+ * digits. Ordered violet → orange → gold → green → blue → white, which reads
+ * as escalating commonness without borrowing red from the strike marker.
+ *
+ * The top band used to be one bucket, "common," running from 401 answers all
+ * the way to the most generic word in the catalog (70k+) — a word with 1,100
+ * answers and one with 12,000 read identically even though the second is an
+ * order of magnitude more common. Split at 1,500 and 5,000, which roughly
+ * track the catalog's 98th and 99.5th percentiles, so "common" still means
+ * "common," not "anything not already rare."
  */
 export const RARITY = [
   { max: 40, square: '🟪', name: 'ultra-rare' },
   { max: 120, square: '🟧', name: 'rare' },
   { max: 400, square: '🟨', name: 'uncommon' },
-  { max: Infinity, square: '🟩', name: 'common' },
+  { max: 1500, square: '🟩', name: 'common' },
+  { max: 5000, square: '🟦', name: 'very-common' },
+  { max: Infinity, square: '⬜', name: 'ubiquitous' },
 ];
 
 export const rarityOf = (solutionCount) => RARITY.find((r) => solutionCount <= r.max);

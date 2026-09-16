@@ -77,7 +77,9 @@ const TIERS = [
   { max: 40, key: 'ultra', label: 'very rare' },
   { max: 120, key: 'rare', label: 'rare' },
   { max: 400, key: 'uncommon', label: 'uncommon' },
-  { max: Infinity, key: 'common', label: 'common' },
+  { max: 1500, key: 'common', label: 'common' },
+  { max: 5000, key: 'verycommon', label: 'very common' },
+  { max: Infinity, key: 'ubiquitous', label: 'ubiquitous' },
 ];
 
 export const tierOf = (answers) => TIERS.find((t) => (answers ?? 0) <= t.max);

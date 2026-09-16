@@ -230,8 +230,9 @@ async function copy(text, which) {
       <h2>The longest possible chain</h2>
       <p v-if="!bestChain && !bestChainLoading" class="sub">
         Search the graph from today's opener for the longest run it can support —
-        not necessarily <em>the</em> longest, just the best one a heuristic search
-        turns up in under a second.
+        not necessarily <em>the</em> longest (proving that would mean checking every
+        possible path, which this graph is far too large for), just the best one a
+        multi-second search turns up.
       </p>
       <button v-if="!bestChain" @click="findBestChain" :disabled="bestChainLoading">
         {{ bestChainLoading ? 'Searching…' : 'Find the longest chain' }}
