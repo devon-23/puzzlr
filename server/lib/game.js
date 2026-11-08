@@ -89,17 +89,6 @@ function gDropVariants(word) {
 /** Every near-miss spelling worth checking for a word, most-likely first. */
 const spellingVariants = (word) => [...pluralVariants(word), ...gDropVariants(word)];
 
-/** A random n-element sample of `arr`, via partial Fisher-Yates. */
-function sampleFrom(arr, n) {
-  if (arr.length <= n) return arr;
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > copy.length - 1 - n; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(copy.length - n);
-}
-
 export class Game {
   constructor(db) {
     this.db = db;
@@ -279,84 +268,4 @@ export class Game {
       .map((s) => ({ id: s.song_id, title: s.title, artist: s.artist }));
   }
 
-  // ── best-possible-chain search ───────────────────────────────────────────
-
-  /**
-   * How long a chain COULD run from a given start, found by search rather
-   * than played.
-   *
-   * "Try every path" is longest-simple-path on a graph with millions of
-   * edges — NP-hard and nowhere near tractable in a request. So this runs
-   * many short greedy rollouts instead: at each step, sample a handful of
-   * songs that answer the current word, and go with whichever keeps the next
-   * word most answerable (breaking ties with a little randomness, so repeat
-   * rollouts explore different branches rather than retracing one greedy
-   * path). Keep the longest rollout found before the time budget runs out.
-   *
-   * This runs synchronously start to finish (better-sqlite3 has no async
-   * API) for as long as `timeBudgetMs` allows — the caller decides whether
-   * that's safe to block on. The server runs it in a worker thread with a
-   * multi-second budget (see best-chain-worker.js) so a good search doesn't
-   * stall other players; it's still "the best chain a search turned up in
-   * that time," never claimed as the provably longest one — proving that
-   * would mean enumerating every simple path through a graph with millions
-   * of edges, which no amount of budget here makes tractable.
-   */
-  bestChain(startSongId, startWord, opts = {}) {
-    const { timeBudgetMs = 900, sampleSize = 25, lookTop = 5, maxSteps = 400 } = opts;
-    const deadline = Date.now() + timeBudgetMs;
-
-    let best = { chain: [], rarity: 0 };
-    while (Date.now() < deadline) {
-      const rollout = this.#rollout(startSongId, startWord, sampleSize, lookTop, maxSteps, deadline);
-      if (rollout.chain.length > best.chain.length ||
-          (rollout.chain.length === best.chain.length && rollout.rarity > best.rarity)) {
-        best = rollout;
-      }
-    }
-    return { links: best.chain.length, chain: best.chain };
-  }
-
-  #rollout(startSongId, startWord, sampleSize, lookTop, maxSteps, deadline) {
-    const usedSongs = new Set([startSongId]);
-    const usedWords = new Set();
-    const chain = [];
-    let word = startWord;
-    let rarity = 0;
-
-    for (let i = 0; i < maxSteps && Date.now() < deadline; i++) {
-      const usedSongsArr = [...usedSongs];
-      const pool = sampleFrom(this.openAnswers(word, usedSongsArr), sampleSize);
-      if (!pool.length) break;
-
-      const usedWordsArr = [...usedWords];
-      const scored = pool
-        .map((s) => ({ s, r: this.validate(word, s.song_id, usedSongsArr, usedWordsArr) }))
-        .filter((x) => x.r.verdict === Verdict.CHAINED);
-      if (!scored.length) break;
-
-      // Alive branches (still have somewhere to go) always beat dead ones;
-      // among alive branches, favor whichever next word has the most answers
-      // of its own, since that is the one least likely to strand the chain.
-      scored.sort((a, b) => {
-        const aAlive = a.r.nextWord !== null;
-        const bAlive = b.r.nextWord !== null;
-        if (aAlive !== bAlive) return aAlive ? -1 : 1;
-        return (b.r.nextAnswers ?? 0) - (a.r.nextAnswers ?? 0);
-      });
-      const pick = scored[Math.floor(Math.random() * Math.min(lookTop, scored.length))];
-
-      const answers = this.answerCount(word);
-      chain.push({
-        songId: pick.s.song_id, title: pick.s.title, artist: pick.s.artist,
-        word, answers, nextWord: pick.r.nextWord, snippet: pick.r.snippet,
-      });
-      rarity += 1 / Math.max(1, answers);
-      usedWords.add(word);
-      usedSongs.add(pick.s.song_id);
-      if (!pick.r.nextWord) break;
-      word = pick.r.nextWord;
-    }
-    return { chain, rarity };
-  }
 }

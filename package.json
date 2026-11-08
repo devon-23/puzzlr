@@ -7,6 +7,7 @@
   "scripts": {
     "build": "vite build",
     "build:catalog": "npm run links && npm run finalize",
+    "deepen": "node pipeline/01b-deepen.js",
     "dev": "vite",
     "finalize": "node pipeline/05-finalize.js",
     "hydrate": "node pipeline/02-hydrate.js",

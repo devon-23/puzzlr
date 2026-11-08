@@ -8,7 +8,56 @@
 
 /** Section markers and repeat annotations, stripped wherever they appear. */
 const MARKER_WORDS =
-  /^(intro|outro|verse|chorus|pre[-\s]?chorus|bridge|hook|refrain|interlude|breakdown|solo|instrumental|spoken|repeat|x\s?\d+|\d+\s?x)\b/i;
+  /^(intro|outro|verse|chorus|pre[-\s]?chorus|bridge|hook|refrain|interlude|breakdown|solo|instrumental|spoken|repeat|x\s?\d+|\d+\s?x)\d*\b/i;
+
+/**
+ * Scaffolding vocabulary, for deciding whether a *whole line* is an annotation
+ * rather than lyrics.
+ *
+ * This is deliberately separate from MARKER_WORDS, which only ever ran against
+ * the inside of a parenthesis. A lyric sheet that writes its markers bare —
+ * a line reading just "Bridge", or "Verse 2" — never reached that check, so
+ * those tokens flowed into the graph and got handed to players as link words.
+ */
+const SCAFFOLD_WORD =
+  /^(?:intro|outro|verse|chorus|prechorus|postchorus|pre|post|bridge|hook|refrain|interlude|breakdown|solo|instrumental|spoken|repeat|remaster(?:ed)?|remix(?:ed)?)\d*$/;
+
+/** "2" in "Verse 2", and repeat counts like "x2" / "2x". */
+const SCAFFOLD_COUNT = /^(?:\d+|x\d+|\d+x)$/;
+const REPEAT_COUNT = /^(?:x\d+|\d+x)$/;
+
+/**
+ * True when a line is only lyric-sheet scaffolding.
+ *
+ * Requires at least one actual marker word, so a line that is nothing but a
+ * number survives — "1979" is a Smashing Pumpkins lyric, not an annotation.
+ * Whole-line only, on purpose: "bridge" and "solo" are ordinary English, and
+ * banning the words outright would cost us "Under the Bridge".
+ */
+export function isStructureLine(line) {
+  const toks = tokenize(line);
+  if (!toks.length) return false;
+  if (toks.every((t) => REPEAT_COUNT.test(t))) return true;
+  if (!toks.some((t) => SCAFFOLD_WORD.test(t))) return false;
+  return toks.every((t) => SCAFFOLD_WORD.test(t) || SCAFFOLD_COUNT.test(t));
+}
+
+/**
+ * Tokens that are never handed to a player.
+ *
+ * The bare forms are here too, not just the numbered ones. "Bridge" and
+ * "chorus" do occur in real lyrics, so banning them costs the odd genuine
+ * link — but a player handed one cannot tell whether it came from a lyric or
+ * from a transcription artefact, and being handed "chorus" reads as a bug
+ * either way. The whole-line filter above already removes most of them; this
+ * catches the rest.
+ *
+ * Deliberately still chainable: "hook", "solo", "breakdown", "spoken" and
+ * "repeat" — common enough as ordinary words that banning them would cost
+ * more than it saves.
+ */
+const SCAFFOLD_TOKEN =
+  /^(?:verse|chorus|bridge|intro|outro|refrain|interlude|instrumental|prechorus|postchorus|remaster(?:ed)?|remix(?:ed)?|(?:verse|chorus|hook|refrain|interlude|intro|outro|bridge|part)\d+)$/;
 
 /**
  * Interjections that make up throwaway lines before a song really starts.
@@ -83,7 +132,7 @@ export function contentLines(rawLyrics) {
   return rawLyrics
     .split(/\r?\n/)
     .map((l) => normalizeLine(l))
-    .filter((l) => l.length > 0 && !isAdlibLine(l));
+    .filter((l) => l.length > 0 && !isAdlibLine(l) && !isStructureLine(l));
 }
 
 /**
@@ -125,7 +174,8 @@ oh ooh ah ha yeah yea uh huh hey ay yo mm mmm hmm woo la na da doo ba
  * line that is *nothing but* ad-libs) must still never become the word a
  * player is handed — nobody can chain off of it on purpose.
  */
-export const isLinkWord = (w) => !!w && w.length > 1 && !WEAK_WORDS.has(w) && !ADLIB_WORDS.has(w);
+export const isLinkWord = (w) =>
+  !!w && w.length > 1 && !WEAK_WORDS.has(w) && !ADLIB_WORDS.has(w) && !SCAFFOLD_TOKEN.test(w);
 
 /**
  * Every way a song can be reached, and what it hands over.

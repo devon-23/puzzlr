@@ -204,23 +204,6 @@ test('searching a real title still works when it is not the bare target word', (
 
 // ── the run-up fragment ──────────────────────────────────────────────────────
 
-// ── best-possible-chain search ──────────────────────────────────────────────
-
-test('bestChain finds a valid, non-repeating path from the start', () => {
-  const r = game.bestChain(4, 'fun', { timeBudgetMs: 50, sampleSize: 10, lookTop: 3, maxSteps: 20 });
-  assert.equal(r.links, r.chain.length);
-  assert.ok(r.links >= 1, 'song 4 answering "fun" reaches at least one link');
-  assert.equal(r.chain[0].word, 'fun');
-  const songIds = r.chain.map((c) => c.songId);
-  assert.equal(songIds.length, new Set(songIds).size, 'no song is reused');
-  assert.ok(!songIds.includes(4), 'the start song itself is never reused');
-});
-
-test('bestChain returns nothing when the start word has no answers left', () => {
-  const r = game.bestChain(1, 'nonsense', { timeBudgetMs: 20 });
-  assert.deepEqual(r, { links: 0, chain: [] });
-});
-
 test('a chained song reports the fragment that made the link', () => {
   const r = game.validate('alone', 2, []);
   assert.equal(r.verdict, Verdict.CHAINED);

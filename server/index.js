@@ -15,8 +15,6 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { Worker } from 'node:worker_threads';
 
 import { Game, Verdict, MIN_LYRIC_TOKENS } from './lib/game.js';
 import { openPlayersDb, resolvePuzzle, puzzleNumberFor, todayPuzzle, dateForPuzzle } from './lib/players.js';
@@ -339,51 +337,6 @@ app.post('/api/name', (req, res) => {
 
   players.prepare('UPDATE sessions SET display_name=? WHERE device_id=?').run(clean, sess.device_id);
   res.json({ name: clean });
-});
-
-/**
- * The best-possible-chain search only depends on the puzzle's fixed start
- * song, so every player asking about the same puzzle gets the same answer —
- * cache it in memory so only the first request of the day pays the search
- * cost. The search itself runs in a worker thread (see best-chain-worker.js),
- * not on the shared request thread, so a multi-second budget doesn't stall
- * every other player mid-guess; the cache holds the in-flight promise too,
- * so concurrent first-askers share one search instead of racing several.
- */
-const BEST_CHAIN_WORKER = fileURLToPath(new URL('./lib/best-chain-worker.js', import.meta.url));
-const BEST_CHAIN_BUDGET_MS = 8000;
-const bestChainCache = new Map();
-
-function searchBestChain(startSongId, startWord) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(BEST_CHAIN_WORKER, {
-      workerData: { catalogPath: CATALOG, startSongId, startWord, opts: { timeBudgetMs: BEST_CHAIN_BUDGET_MS } },
-    });
-    worker.once('message', resolve);
-    worker.once('error', reject);
-  });
-}
-
-app.post('/api/best-chain', async (req, res) => {
-  const { sessionId } = req.body ?? {};
-  const sess = S.byId.get(sessionId ?? '');
-  if (!sess) return res.status(404).json({ error: 'no such session' });
-
-  let promise = bestChainCache.get(sess.puzzle);
-  if (!promise) {
-    const start = S.steps.all(sess.id)[0];
-    if (!start?.next_word) return res.status(503).json({ error: 'no start for this puzzle' });
-
-    promise = searchBestChain(start.song_id, start.next_word);
-    promise.catch(() => bestChainCache.delete(sess.puzzle)); // don't cache a failed search
-    bestChainCache.set(sess.puzzle, promise);
-  }
-
-  try {
-    res.json(await promise);
-  } catch {
-    res.status(500).json({ error: 'search failed' });
-  }
 });
 
 app.get('/api/leaderboard', (req, res) => {

@@ -9,6 +9,7 @@ import {
   openingLines,
   wordOccurrences,
   isLinkWord,
+  isStructureLine,
   songKey,
 } from './normalize.js';
 
@@ -167,4 +168,63 @@ test('songKey collapses release variants of one recording', () => {
   assert.notEqual(songKey('The Kettles', 'Silver (Part Two)'), base);
   // A cover keeps a different key; covers are caught later, by opening text.
   assert.notEqual(songKey('Downpipe', 'Silver'), base);
+});
+
+
+test('a bare section marker line is scaffolding, not lyrics', () => {
+  for (const line of ['Verse 2', 'Verse2', 'Bridge', 'Chorus', 'Pre-Chorus', 'Instrumental', 'Hook 3']) {
+    assert.equal(isStructureLine(line), true, `${line} should read as scaffolding`);
+  }
+  // Repeat counts written on their own line.
+  assert.equal(isStructureLine('x2'), true);
+  assert.equal(isStructureLine('2x'), true);
+  // Production notes a sheet carries above the words.
+  assert.equal(isStructureLine('Remastered'), true);
+});
+
+test('scaffolding words still count as lyrics inside a real line', () => {
+  assert.equal(isStructureLine('Under the bridge downtown'), false);
+  assert.equal(isStructureLine('Sing the chorus with me'), false);
+  assert.equal(isStructureLine('I played a solo'), false);
+  // A line that is only a number is a lyric, not a marker's leftover digit.
+  assert.equal(isStructureLine('1979'), false);
+});
+
+test('contentLines strips marker lines but keeps the words around them', () => {
+  const sheet = [
+    '[Verse 1]',
+    'Under the bridge we waited',
+    '',
+    'Verse 2',
+    'Nothing ever changed there',
+    'Bridge',
+    'Hold what you had',
+    'x2',
+    'Remastered 2011',
+  ].join('\n');
+  assert.deepEqual(contentLines(sheet), [
+    'under the bridge we waited',
+    'nothing ever changed there',
+    'hold what you had',
+  ]);
+});
+
+test('a numbered marker token is never handed to a player', () => {
+  // "verse2" slipped past the old marker test: \b does not fire between a
+  // letter and a digit, so the token reached the graph as a link word.
+  assert.equal(isLinkWord('verse2'), false);
+  assert.equal(isLinkWord('prechorus'), false);
+  assert.equal(isLinkWord('remaster'), false);
+  assert.equal(isLinkWord('remastered'), false);
+  // The bare forms are banned too: a player handed "chorus" cannot tell a
+  // real lyric from a transcription artefact, so neither should the game.
+  assert.equal(isLinkWord('bridge'), false);
+  assert.equal(isLinkWord('chorus'), false);
+  assert.equal(isLinkWord('verse'), false);
+  assert.equal(isLinkWord('instrumental'), false);
+  // Words common enough in real lyrics to be worth keeping.
+  assert.equal(isLinkWord('solo'), true);
+  assert.equal(isLinkWord('hook'), true);
+  assert.equal(isLinkWord('breakdown'), true);
+  assert.equal(isLinkWord('spoken'), true);
 });

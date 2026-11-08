@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS meta (
 /** Columns added after the first build ran; applied idempotently. */
 const MIGRATIONS = [
   'ALTER TABLE songs ADD COLUMN dedup_key TEXT',
+  // Stage 01b walks a chosen artist's whole discography; this flag makes it resumable.
+  'ALTER TABLE artists ADD COLUMN deep_crawled INTEGER NOT NULL DEFAULT 0',
   'CREATE INDEX IF NOT EXISTS idx_songs_dedup ON songs(dedup_key)',
   'ALTER TABLE songs ADD COLUMN opening_hash TEXT',
   'CREATE INDEX IF NOT EXISTS idx_songs_opening ON songs(opening_hash)',
